@@ -6,38 +6,38 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pandas as pd
 
-# Cargar el dataset desde un archivo CSV
+# Load the dataset from a csv file
 data = pd.read_csv("SentencesFinal.csv")
 
-# Separar las columnas de inglés y alemán
+# Separate the columns of sentences
 english_sentences = data['English'].tolist()
 german_sentences = data['German'].tolist()
 
-# Añadir tokens especiales a las frases alemanas
+# Adding additional tokens for the german sentences
 german_sentences = ["<start> " + sentence + " <end>" for sentence in german_sentences]
 
 
-# Parámetros
+# Parameters
 num_words = 1000
 max_sequence_length = 10
 
-# Tokenizador para inglés
+# Tokenizer for english
 tokenizer_eng = Tokenizer(num_words=num_words, filters='')
 tokenizer_eng.fit_on_texts(english_sentences)
 input_sequences = tokenizer_eng.texts_to_sequences(english_sentences)
 input_sequences = pad_sequences(input_sequences, maxlen=max_sequence_length, padding='post')
 
-# Tokenizador para alemán
+# Tokenizer for german
 tokenizer_ger = Tokenizer(num_words=num_words, filters='')
 tokenizer_ger.fit_on_texts(german_sentences)
 target_sequences = tokenizer_ger.texts_to_sequences(german_sentences)
 target_sequences = pad_sequences(target_sequences, maxlen=max_sequence_length, padding='post')
 
-# Obtener el tamaño del vocabulario
+# Getting size of vocabulary
 input_vocab_size = len(tokenizer_eng.word_index) + 1
 target_vocab_size = len(tokenizer_ger.word_index) + 1
 
-# Parámetros del modelo
+# Model parameters
 embedding_dim = 128
 latent_dim = 256
 
@@ -56,26 +56,28 @@ decoder_outputs, _, _ = decoder_lstm(decoder_embedding, initial_state=encoder_st
 decoder_dense = Dense(target_vocab_size, activation='softmax')
 decoder_outputs = decoder_dense(decoder_outputs)
 
-# Definir el modelo
+# Model definition
 model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 model.summary()
 
 # Desplazar la secuencia de salida (y_train)
+# Shifting the target sequence
 target_sequences_input = target_sequences[:, :-1]
 target_sequences_output = target_sequences[:, 1:]
 
 # Añadir dimensión extra para el formato (batch_size, sequence_length, 1)
+# Extra dimension for the format 
 target_sequences_output = np.expand_dims(target_sequences_output, axis=-1)
 
-# Entrenar el modelo
+# Training
 epochs = 100
 batch_size = 16
 print("Forma de input_sequences:", input_sequences.shape)
 print("Forma de target_sequences_input:", target_sequences_input.shape)
 print("Forma de target_sequences_output:", target_sequences_output.shape)
 
-# Usar solo las primeras 10,000 muestras
+# Use only the first 10000 samples
 input_sequences = input_sequences[:10000]
 target_sequences_input = target_sequences_input[:10000]
 target_sequences_output = target_sequences_output[:10000]
@@ -101,9 +103,10 @@ history = model.fit(
 
 
 # Modelo de inferencia para el encoder
+# Inference Model for the encoder
 encoder_model = Model(encoder_inputs, encoder_states)
 
-# Modelo de inferencia para el decoder
+# Inference model for the decoder
 decoder_state_input_h = Input(shape=(latent_dim,))
 decoder_state_input_c = Input(shape=(latent_dim,))
 decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
@@ -118,7 +121,7 @@ decoder_model = Model(
     [decoder_outputs] + decoder_states
 )
 
-# Función para generar traducción
+# Translate function given an input
 def translate_sentence(input_text):
     input_seq = tokenizer_eng.texts_to_sequences([input_text])
     input_seq = pad_sequences(input_seq, maxlen=max_sequence_length, padding='post')
@@ -151,13 +154,13 @@ def translate_sentence(input_text):
 
     return ' '.join(translated_sentence)
 
-# Ejemplo de traducción
+# Example
 print(translate_sentence("guten"))
 
-# Guardar el modelo
+# Save model
 model.save('nmt_model.h5')
 
-# Guardar los tokenizadores
+# Import tokenizers
 import pickle
 with open('tokenizer_eng.pkl', 'wb') as f:
     pickle.dump(tokenizer_eng, f)
