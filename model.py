@@ -16,7 +16,6 @@ german_sentences = data['German'].tolist()
 # Adding additional tokens for the german sentences
 german_sentences = ["<start> " + sentence + " <end>" for sentence in german_sentences]
 
-
 # Parameters
 num_words = 1000
 max_sequence_length = 10
