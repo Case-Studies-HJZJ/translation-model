@@ -6,7 +6,8 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Embedding, Dense
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from nltk.translate.bleu_score import sentence_bleu
 
 # Preprocessing function
 def preprocess_text(sentence):
@@ -18,8 +19,10 @@ english_sentences = data['English'].apply(preprocess_text).tolist()
 german_sentences = ["<start> " + preprocess_text(sentence) + " <end>" for sentence in data['German'].tolist()]
 
 # Parameters
-num_words = 5000  # Increased vocabulary size
-max_sequence_length = 20  # Allow longer sequences
+num_words = 5000  # Vocabulary size
+max_sequence_length = 20  # Maximum sequence length
+embedding_dim = 256
+latent_dim = 512
 
 # Tokenizer for English
 tokenizer_eng = Tokenizer(num_words=num_words, filters='', oov_token='<unk>')
@@ -37,21 +40,17 @@ target_sequences = pad_sequences(target_sequences, maxlen=max_sequence_length, p
 input_vocab_size = len(tokenizer_eng.word_index) + 1
 target_vocab_size = len(tokenizer_ger.word_index) + 1
 
-# Model parameters
-embedding_dim = 256
-latent_dim = 512
-
 # Encoder
 encoder_inputs = Input(shape=(max_sequence_length,))
 encoder_embedding = Embedding(input_vocab_size, embedding_dim)(encoder_inputs)
-encoder_lstm = LSTM(latent_dim, return_state=True)
+encoder_lstm = LSTM(latent_dim, return_state=True, dropout=0.2, recurrent_dropout=0.2)
 encoder_outputs, state_h, state_c = encoder_lstm(encoder_embedding)
 encoder_states = [state_h, state_c]
 
 # Decoder
 decoder_inputs = Input(shape=(None,))
 decoder_embedding = Embedding(target_vocab_size, embedding_dim)(decoder_inputs)
-decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True)
+decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True, dropout=0.2, recurrent_dropout=0.2)
 decoder_outputs, _, _ = decoder_lstm(decoder_embedding, initial_state=encoder_states)
 decoder_dense = Dense(target_vocab_size, activation='softmax')
 decoder_outputs = decoder_dense(decoder_outputs)
@@ -66,26 +65,36 @@ target_sequences_input = target_sequences[:, :-1]
 target_sequences_output = target_sequences[:, 1:]
 target_sequences_output = np.expand_dims(target_sequences_output, axis=-1)
 
-# Early stopping and learning rate reduction
-early_stopping = EarlyStopping(monitor='val_loss', patience=10)
-reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5)
+# Callbacks
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1)
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=1)
+checkpoint = ModelCheckpoint(
+    filepath='nmt_checkpoint_model.keras',
+    monitor='val_loss',
+    save_best_only=True,
+    verbose=1
+)
 
 # Training
-epochs = 30  # Train for more epochs
-batch_size = 64  # Larger batch size for faster training
+epochs = 30
+batch_size = 64
 history = model.fit(
     [input_sequences, target_sequences_input],
     target_sequences_output,
     batch_size=batch_size,
     epochs=epochs,
     validation_split=0.2,
-    callbacks=[early_stopping, reduce_lr]
+    callbacks=[early_stopping, reduce_lr, checkpoint]
 )
 
-# Save the trained model
-model.save('nmt_model.keras')
+# Save the final model
+model.save('nmt_model_final.keras')
 
-# Save tokenizers using pickle
+# Save training history
+with open('training_history.pkl', 'wb') as f:
+    pickle.dump(history.history, f)
+
+# Save tokenizers
 with open('tokenizer_eng.pkl', 'wb') as f:
     pickle.dump(tokenizer_eng, f)
 with open('tokenizer_ger.pkl', 'wb') as f:
@@ -138,5 +147,16 @@ def translate_sentence(input_text):
 
     return ' '.join(translated_sentence)
 
-# Example translation
-print(translate_sentence("hello, how are you today?"))
+# Example BLEU Evaluation
+def evaluate_translation(reference, candidate):
+    reference_tokens = [reference.split()]
+    candidate_tokens = candidate.split()
+    return sentence_bleu(reference_tokens, candidate_tokens)
+
+# Example Translation and BLEU
+reference = "hallo wie geht es dir heute"
+candidate = translate_sentence("hello, how are you today?")
+bleu_score = evaluate_translation(reference, candidate)
+
+print(f"Translation: {candidate}")
+print(f"BLEU Score: {bleu_score:.2f}")
