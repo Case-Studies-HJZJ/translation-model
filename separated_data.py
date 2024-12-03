@@ -19,6 +19,9 @@ def classify_formal_informal(data):
             formal_data.append((english_sentence, german_sentence))
         elif any(keyword in german_sentence for keyword in informal_keywords):
             informal_data.append((english_sentence, german_sentence))
+        else:
+            formal_data.append((english_sentence, german_sentence))
+            informal_data.append((english_sentence, german_sentence))
 
     return formal_data, informal_data
 
